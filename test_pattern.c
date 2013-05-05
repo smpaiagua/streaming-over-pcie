@@ -41,9 +41,7 @@ int main(int argc, char **argv)
   printf("%d ",((int*)mems)[i]);
  }
 
- compressData(mems, mem_new, &new_size, 4, 40, 80, 10);
-printf("new pointer: %08x\n",new_size);
- printf("New size: %d\n",new_size);
+ compressData(mems, &mem_new, &new_size, 4, 40, 80, 10);
 
  for(i=0;i < new_size/4; i++){
   printf("%d ",((int*)mem_new)[i]);

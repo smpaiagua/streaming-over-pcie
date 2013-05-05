@@ -184,33 +184,27 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
 *	      vsize - VSIZE of the pattern
 * Returns : 0 if successful, -1 otherwise
 */
-int compressData(void *ubuf, void *new_ubuf, int *buf_size, unsigned int offset, unsigned int hsize, unsigned int stride, unsigned int vsize)
+int compressData(void *ubuf, void **new_ubuf, int *buf_size, unsigned int offset, unsigned int hsize, unsigned int stride, unsigned int vsize)
 {
  int new_size;
  int i,j,ctr;
 
  new_size = hsize*vsize;
 
- if(posix_memalign((void**)&new_ubuf, 16, new_size)!= 0){
+ if(posix_memalign((void**)new_ubuf, 16, new_size)!= 0){
    PRINT("Could not allocate new user buffer\n");
    return -1;
  }
 
- printf("new_ubuf: %08x\n",new_ubuf);
-
-printf("offset: %d hsize: %d vsize: %d stride: %d\n", offset, hsize, vsize, stride);
- 
  *buf_size = new_size;
  ctr = 0;
 for (i=0; i < vsize; i++)
 {
   for (j=0;j < hsize/4; j++)
   {
-     ((int *)new_ubuf)[ctr] = ((int *)ubuf)[offset/4 + i*stride/4 + j];
-	
-     printf(".%d ", ((int*)new_ubuf)[ctr]);
+    ((int *)(*new_ubuf))[ctr] = ((int *)ubuf)[offset/4 + i*stride/4 + j];
      ctr++;
-  } 
+  }
 }
  
 return 0;
