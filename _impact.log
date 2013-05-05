@@ -1,0 +1,211 @@
+iMPACT Version: 14.3
+
+iMPACT log file Started on Fri Mar 15 14:33:33 2013
+
+Welcome to iMPACT
+iMPACT Version: 14.3
+Project: '/root//auto_project.ipf' already exists.
+Original project has been renamed to '/root//auto_project_1.ipf'.
+Project: /root//auto_project.ipf created.
+// *** BATCH CMD : setMode -pff
+// *** BATCH CMD : addConfigDevice  -name "flash_100M" -path "/root/"
+// *** BATCH CMD : setSubmode -pffbpi
+// *** BATCH CMD : setAttribute -configdevice -attr multibootBpiType -value"TYPE_BPI"
+// *** BATCH CMD : setAttribute -configdevice -attr multibootBpichainType -value"PARALLEL"
+// *** BATCH CMD : addDesign -version 0 -name "0"
+// *** BATCH CMD : setMode -pff
+// *** BATCH CMD : addDeviceChain -index 0
+// *** BATCH CMD : setMode -pff
+// *** BATCH CMD : addDeviceChain -index 0
+Override chain at index 0.
+Overriding chain at index 0.
+// *** BATCH CMD : setAttribute -configdevice -attr compressed -value "FALSE"
+// *** BATCH CMD : setAttribute -configdevice -attr autoSize -value "FALSE"
+// *** BATCH CMD : setAttribute -configdevice -attr fileFormat -value "mcs"
+// *** BATCH CMD : setAttribute -configdevice -attr fillValue -value "FF"
+// *** BATCH CMD : setAttribute -configdevice -attr swapBit -value "FALSE"
+// *** BATCH CMD : setAttribute -configdevice -attr dir -value "UP"
+// *** BATCH CMD : setAttribute -configdevice -attr multiboot -value "FALSE"
+// *** BATCH CMD : setAttribute -configdevice -attr spiSelected -value "FALSE"
+// *** BATCH CMD : setAttribute -configdevice -attr ironhorsename -value "1"
+// *** BATCH CMD : setAttribute -configdevice -attr flashDataWidth -value "16"
+// *** BATCH CMD : setCurrentDesign -version 0
+// *** BATCH CMD : setAttribute -design -attr RSPin -value ""
+// *** BATCH CMD : setCurrentDesign -version 0
+// *** BATCH CMD : addPromDevice -p 1 -size 131072 -name 128M
+'1': Added Device 128M successfully.
+----------------------------------------------------------------------
+// *** BATCH CMD : setMode -pff
+// *** BATCH CMD : addDeviceChain -index 0
+Override chain at index 0.
+Overriding chain at index 0.
+// *** BATCH CMD : setMode -pff
+// *** BATCH CMD : addDeviceChain -index 0
+Override chain at index 0.
+Overriding chain at index 0.
+// *** BATCH CMD : setMode -pff
+// *** BATCH CMD : setSubmode -pffbpi
+// *** BATCH CMD : setMode -pff
+------------------------  GUI: Wizard Data Report  ---------------------------
+      Compression : false
+      Fill Value : FF
+      Output Format : mcs
+      Swap Bits : false
+      LoadDirection : UP
+      PROM Basename : flash_100M
+      File Location : /root/
+      Auto Selcet : false
+      Number of Revisions : 1
+      Number of PROMs : 1
+      PROM Name : 128M,   PROM Size : 134217728 Bytes
+-------------------------- END of Report ----------------------------
+// *** BATCH CMD : setAttribute -design -attr RSPin -value "00"
+// *** BATCH CMD : addDevice -p 1 -file"/root/Documents/spaiagua/Swinger/pcie_bridge_simple/implementation/system.bit"
+'1': Loading file'/root/Documents/spaiagua/Swinger/pcie_bridge_simple/implementation/system.bit'...
+INFO:iMPACT - Elapsed time =      3 sec.
+done.
+INFO:iMPACT:501 - '1': Added Device xc7vx485t successfully.
+----------------------------------------------------------------------
+file :/root/Documents/spaiagua/Swinger/pcie_bridge_simple/implementation/system.bit used size : 108248864
+Add one device.// *** BATCH CMD : setAttribute -design -attr RSPinMsb -value "1"
+// *** BATCH CMD : setAttribute -design -attr name -value "0"
+// *** BATCH CMD : setAttribute -design -attr RSPin -value "00"
+// *** BATCH CMD : setAttribute -design -attr endAddress -value "ce77e3"
+INFO:iMPACT - Current time: 15 Mar 2013 14:34:32
+// *** BATCH CMD : setMode -pff
+// *** BATCH CMD : setSubmode -pffbpi
+Total configuration bit size = 108248864  bits.
+Total configuration byte size = 13531108 bytes.
+// *** BATCH CMD : generate
+INFO:Bitstream:181 - The start address provided has been multiplied by a factor   of 2 due to the use of the x16 data width
+0xce77e4 (13531108) bytes loaded up from 0x0
+Using user-specified prom size of 131072K
+Writing file "/root/flash_100M.mcs".
+Writing file "/root/flash_100M.prm".
+Writing file "/root/flash_100M.cfi".
+// *** BATCH CMD : setCurrentDesign -version 0
+// *** BATCH CMD : setMode -bs
+GUI --- Auto connect to cable...
+// *** BATCH CMD : setCable -port auto
+INFO:iMPACT - Digilent Plugin: Plugin Version: 2.4.3
+INFO:iMPACT - Digilent Plugin: found 1 device(s).
+INFO:iMPACT - Digilent Plugin: opening device: "JtagSmt1", SN:210203337787
+INFO:iMPACT - Digilent Plugin: User Name: JtagSmt1
+INFO:iMPACT - Digilent Plugin: Product Name: Digilent JTAG-SMT1
+INFO:iMPACT - Digilent Plugin: Serial Number: 210203337787
+INFO:iMPACT - Digilent Plugin: Product ID: 30800151
+INFO:iMPACT - Digilent Plugin: Firmware Version: 0105
+INFO:iMPACT - Digilent Plugin: JTAG Port Number: 0
+INFO:iMPACT - Digilent Plugin: JTAG Clock Frequency: 10000000 Hz
+Attempting to identify devices in the boundary-scan chain configuration...
+INFO:iMPACT - Current time: 15 Mar 2013 14:34:41
+// *** BATCH CMD : Identify -inferir 
+PROGRESS_START - Starting Operation.
+Identifying chain contents...'0': : Manufacturer's ID = Xilinx xc7vx485t, Version : 3
+INFO:iMPACT:1777 - 
+   Reading /extra/Xilinx/14.3/ISE_DS/ISE/virtex7/data/xc7vx485t.bsd...
+INFO:iMPACT - Using CseAdapterBSDevice
+INFO:iMPACT:501 - '1': Added Device xc7vx485t successfully.
+----------------------------------------------------------------------
+done.
+PROGRESS_END - End Operation.
+Elapsed time =      0 sec.
+// *** BATCH CMD : identifyMPM 
+Selected part: 28F00AG18F
+// *** BATCH CMD : attachflash -position 1 -bpi "28F00AG18F"
+// *** BATCH CMD : assignfiletoattachedflash -position 1 -file"/root/flash_100M.mcs"
+INFO:iMPACT - Current time: 15 Mar 2013 14:35:38
+// *** BATCH CMD : Program -p 1 -dataWidth 16 -rs1 25 -rs0 24 -bpionly -e -v-loadfpga 
+PROGRESS_START - Starting Operation.
+Maximum TCK operating frequency for this device chain: 66000000.
+Validating chain...
+Boundary-scan chain validated successfully.
+1: Device Temperature: Current Reading:   40.53 C, Min. Reading:   36.10 C, Max.Reading:   42.99 C
+1: VCCINT Supply: Current Reading:   1.002 V, Min. Reading:   0.996 V, Max.Reading:   1.005 V
+1: VCCAUX Supply: Current Reading:   1.816 V, Min. Reading:   1.813 V, Max.Reading:   1.822 V
+Not an xsdb core.
+Core is not loaded.
+INFO:iMPACT - Downloading   /extra/Xilinx/14.3/ISE_DS/ISE/data/cse/cseflash/virtex7/xc7vx485t_xsdbbpi_lvc   mos18.cor core file.
+INFO:iMPACT - Creating XC7VX485T device.
+PROGRESS_START - Starting Operation.
+'1': Programming device...
+ Match_cycle = NoWait.
+Match cycle: NoWait
+ LCK_cycle = NoWait.
+LCK cycle: NoWait
+done.
+INFO:Cse - Status register values:
+INFO:Cse - 0011 1111 0101 1110 0000 1000 0100 0000 
+INFO:Cse - '1': Completed downloading bit file to device.
+INFO:Cse - '1': Programming completed successfully.
+PROGRESS_END - End Operation.
+Elapsed time =      3 sec.
+key: dclk_has_reset, value: 0
+key: period_frc, value: 0
+key: period_int, value: 10
+Found Slave on Bus Index.
+Reset Core
+PROGRESS_START - Starting Operation.
+Reset Core
+Set Data Width
+Using RS Pins [25,24]...
+Populating BPI common flash interface ...
+Common Flash Interface Information Query completed successfully.
+INFO:Cse - Common Flash Interface Information from Device:
+INFO:Cse - Verification string:	 51 52 59
+INFO:Cse - Manufacturer ID:    	 89 
+INFO:Cse - Vendor ID:          	 00 
+INFO:Cse - Device Code:        	 1b 
+Reset Core
+Using x16 mode ...
+Set Data Width
+Using RS Pins [25,24]...
+'1': Erasing device...
+done.
+'1': Erasure completed successfully.
+Reset Core
+Using x16 mode ...
+Set Data Width
+Using RS Pins [25,24]...
+INFO:Cse - Using Buffered Programming.
+'1': Programming Flash.
+done.
+'1': Flash Programming completed successfully.
+Reset Core
+Using x16 mode ...
+Set Data Width
+Using RS Pins [25,24]...
+'1': Reading device contents...
+done.
+'1': Verification completed.
+PROGRESS_END - End Operation.
+Elapsed time =    341 sec.
+INFO:iMPACT - '1': Checking done pin....done.
+'1': Programmed successfully.
+Project: '/root//auto_project.ipf' created.
+// *** BATCH CMD : setMode -bs
+// *** BATCH CMD : setMode -ss
+// *** BATCH CMD : setMode -sm
+// *** BATCH CMD : setMode -hw140
+// *** BATCH CMD : setMode -spi
+// *** BATCH CMD : setMode -acecf
+// *** BATCH CMD : setMode -acempm
+// *** BATCH CMD : setMode -pff
+// *** BATCH CMD : setMode -bs
+// *** BATCH CMD : saveProjectFile -file "/root//auto_project.ipf"
+INFO:iMPACT - User_EnvOsname: 'SUSE LINUX'
+INFO:iMPACT - User_EnvOsrelease: 'openSUSE 12.2 (x86_64)'
+// *** BATCH CMD : setMode -bs
+// *** BATCH CMD : setMode -pff
+INFO:iMPACT - Launching WebTalk, please refer to the webtalk log at   /root/webtalk.log for details.
+INFO:iMPACT - Running wbtc successfully.
+// *** BATCH CMD : setMode -bs
+// *** BATCH CMD : deleteDevice -position 1
+// *** BATCH CMD : setMode -bs
+// *** BATCH CMD : setMode -ss
+// *** BATCH CMD : setMode -sm
+// *** BATCH CMD : setMode -hw140
+// *** BATCH CMD : setMode -spi
+// *** BATCH CMD : setMode -acecf
+// *** BATCH CMD : setMode -acempm
+// *** BATCH CMD : setMode -pff

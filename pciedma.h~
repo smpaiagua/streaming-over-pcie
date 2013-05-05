@@ -1,0 +1,97 @@
+#include "/root/Documents/spaiagua/Swinger/pcie_dev_driver/pciDriver/include/lib/pciDriver.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/time.h>
+
+#define MAX_KBUF (8*1024*1024)
+#define MAX_UBUF (64*1024*1024)
+
+/* Address ranges from system.mhs */
+
+#define PCIE_BASE 		0x0
+#define DMA_BASE 		0x1000
+#define BRAM_BASE 		0x2000
+#define SUMVEC_BASE0 		0x3000 	  
+#define SUMVEC_BASE1 		0x4000
+
+
+#define AXI_PCIE 		0x0
+#define BRAM_ABS_BASE		0x80004000
+
+
+/* Indexes based on 32-bit (4 bytes) accesses */
+
+#define PCIE_INDEX 		(PCI_BASE/0x4)
+#define DMA_INDEX 		(DMA_BASE/0x4)
+#define BRAM_INDEX		(BRAM_BASE/0x4)
+#define SUMVEC_INDEX0		(SUMVEC_BASE0/0x4)
+#define SUMVEC_INDEX1		(SUMVEC_BASE1/0x4)
+
+/* DMA Controller Register Space */
+#define MM2S_DMACR		0x0 	// MM2S DMA Control Register
+#define MM2S_DMASR		0x4 	// MM2S DMA Status Register
+#define MM2S_CURDESC		0x8 	// MM2S DMA Current Descriptor Pointer
+#define MM2S_TAILDESC		0x10 	// MM2S DMA Tail Descriptor Pointer
+#define S2MM_DMACR		0x30
+#define S2MM_DMASR		0x34
+#define S2MM_CURDESC		0x38
+#define S2MM_TAILDESC		0x40
+
+/* Bit Masks */
+#define DMACR_RS		0x1		// Run/Stop control bit (R/W)
+#define DMACR_RESET		0x4		// Soft Reset bit (R/W)
+#define DMACR_KEYHOLE		0x8		// Keyhole read (R/W)
+#define DMACR_IOC_IrqEn		0x1000		// Interrupt on Complete (IOC) Interrupt Enable (R/W)
+#define DMACR_Dly_IrqEn		0x2000		// Interrupt on Delay Timer Interrupt Enable (R/W)
+#define DMACR_Err_IrqEn		0x4000		// Interrupt on Error Interrupt Enable (R/W)
+#define DMACR_IRQThreshold	0xFF0000	// Interrupt Threshold value - 8bits - (R/W)
+#define DMACR_IRQDelay		0xFF000000	// Interrupt Delay Time Out - 8bits - (R/W)
+
+#define DMASR_HALTED		0x1		// Run/Stop state of the DMA channel (RO)
+#define DMASR_IDLE		0x2		// Idle state of the DMA channel (RO)
+#define DMASR_SGINCLD		0x8		// Scatter Gather Engine Included (RO)
+#define DMASR_DMAINTERR		0x10 		// DMA Internal Error (RO)
+#define DMASR_DMASLVERR		0x20 		// DMA Slave Error (RO)
+#define DMASR_DMADECERR		0x40 		// DMA Decode Error (RO)
+#define DMASR_SGINTERR		0x100 		// Scatter Gather Internal Error (RO)
+#define DMASR_SGSLVERR		0x200 		// Scatter Gather Slave Error (RO)
+#define DMASR_SGDECERR		0x400 		// Scatter Gather Decode Error (RO)
+#define DMASR_IOC_IRQ		0x1000 		// Interrupt on Complete (R/W)
+#define DMASR_DLY_IRQ		0x2000 		// Interrupt on Delay (R/W)
+#define DMASR_ERR_IRQ		0x4000 		// Interrupt on Error (R/W)
+#define DMASR_IRQTHRESHOLDSTS	0xFF0000 		// Interrupt Threshold Status - 8bits - (RO)
+#define DMASR_IRQDELAYSTS	0xFF000000 		// Interrupt Delay Time Status - 8bits - (RO)
+
+#define CURDESC_PTR		0xFFFFFFC0	// Current Descriptor Pointer - 26 bits - (RO) - Only written when DMACR.RS=0 and DMASR.Halted=1
+#define TAILDESC_PTR		0xFFFFFFC0	// Tail Descriptor Pointer - 26 bits - (R/W)
+
+/* Scatter Gather Descriptors */
+#define NXTDESC			0x0		// Next descriptor pointer
+#define BUFFER_ADDRESS		0x8		// Buffer address
+#define CONTROL			0x18		// Control
+#define STATUS			0x1C		// Status
+
+/* Bit Masks */
+#define NXTDESC_PTR		0xFFFFFFC0	// Descriptor pointer mask - 26 bits
+
+#define BUFFADDR		0xFFFFFFFF	// Buffer address mask
+
+#define CONTROL_BUFFLEN		0x7FFFFF	// Buffer length - 23 bits
+#define CONTROL_TXEOF		0x4000000	// Transmit End Of Frame - 1 bit - MM2S ONLY
+#define CONTROL_TXSOF		0x8000000	// Transmit Start Of Frame - 1 bit - MM2S ONLY
+
+#define STATUS_TRANSF		0x7FFFFF	// Transferred bytes for this descriptor - 23 bits
+#define STATUS_RXEOF		0x4000000	// End of Frame - 1 bit - S2MM ONLY
+#define STATUS_RXSOF		0x8000000	// Start of Frame - 1 bit - S2MM ONLY
+#define STATUS_DMAINTERR	0x10000000	// DMA Internal Error - 1 bit
+#define STATUS_DMASLVERR	0x20000000	// DMA Slave Error - 1 bit
+#define STATUS_DMADECERR	0x40000000	// DMA Decode Error - 1 bit
+#define STATUS_CMPLT		0x80000000	// Completed transfer
+
+/* AXI Bridge for PCI Express Address Translation */
+#define AXIBAR2PCIEBAR0		0x20C		// AXIBAR2PCIEBAR0 register offset
+
+#define PCIE2AXI		0x80000000	// PCI to AXI address mapping
+
+#define AXI2PCIE_MASK		0xFF000000	// AXI can address 16MB (0x00FFFFFF) 

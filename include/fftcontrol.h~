@@ -1,0 +1,26 @@
+
+
+#define FFT_BASE	0x5000
+#define FFT_INDEX	(FFT_BASE/0x4)
+
+#define FFT_RST_BASE	0x5100
+#define FFT_RST_INDEX	(FFT_RST_BASE/0x4)
+#define FFT_RST_CODE	0xA
+
+#define SIZE_MASK	0x1F
+#define FWDINV_MASK	0x20
+#define SCALING_MASK	0xFFC0
+
+#define FWDINV_SHIFT	5
+#define SCALING_SHIFT	6
+
+
+unsigned int readFFTstatus();
+
+int setFFTsize(int size);
+
+int setFFTfwdinv(int fwdinv);
+
+int setFFTscaling(int scale_sched);
+
+int FFTreset();

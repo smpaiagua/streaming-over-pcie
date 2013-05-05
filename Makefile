@@ -1,0 +1,102 @@
+###############################################################
+#
+# Change History:
+#
+# $Log: not supported by cvs2svn $
+# Revision 1.4  2006/11/21 15:54:22  marcus
+# Moved board tests to a separate directory, 'other_tests'.
+#
+# Revision 1.3  2006/11/10 17:51:22  marcus
+# Added install and uninstall entries.
+#
+# Revision 1.2  2006/10/13 17:18:35  marcus
+# Implemented and tested most of C++ interface.
+#
+# Revision 1.1  2006/10/10 14:46:49  marcus
+# Initial commit of the new pciDriver for kernel 2.6
+#
+# Revision 1.1  2006/08/20 13:21:55  marcus
+# Initial commit
+#
+###############################################################
+
+# Main Makefile for the new pciDriver
+
+
+# These are switches for the library
+# <none>
+
+# These are switches for the driver
+# <none>
+
+# These are only for the test programs
+# <none>
+
+
+
+export VERBOSE := 1
+
+include ../pciDriver/common.mk
+
+# From /tests makefile
+
+INCDIR += ../../include
+LDINC += $(addprefix -L ,$(LIBDIR))
+LDFLAGS += -lpcidriver -lm
+
+BINARIES = 
+
+###############################################################
+# Target definitions
+
+
+.PHONY: all dirs depend clean
+
+all: dirs depend $(BINARIES) $(BINDIR)/xiltest $(BINDIR)/dmastream $(BINDIR)/dmafft $(BINDIR)/speedtest $(BINDIR)/test_pattern
+
+# Relate all exec names to it exec in the bin dir
+$(BINARIES) : % : $(BINDIR)/% ;
+
+# Target for each exec from the object file
+$(BINDIR)/%: $(OBJDIR)/%.o
+	@echo -e "LD \t$@"
+	$(Q)$(CXX) $(LDINC) $(LDFLAGS) $(CXXFLAGS) -o $@ $<
+
+$(BINDIR)/xiltest: $(OBJDIR)/xiltest.o
+	@echo -e "LD \t$@"
+	$(Q)$(CC) $(LDINC) $(LDFLAGS) $(CFLAGS) -o $@ $<
+	
+$(BINDIR)/dmafft: $(OBJDIR)/dmafft.o $(OBJDIR)/pciedma.o $(OBJDIR)/fftcontrol.o
+	@echo -e "LD \t$@"
+	$(Q)$(CC) $(LDINC) $(LDFLAGS) $(CFLAGS) -o $@ $<  $(OBJDIR)/pciedma.o $(OBJDIR)/fftcontrol.o
+	
+$(BINDIR)/speedtest: $(OBJDIR)/speedtest.o $(OBJDIR)/pciedma.o
+	@echo -e "LD \t$@"
+	$(Q)$(CC) $(LDINC) $(LDFLAGS) $(CFLAGS) -o $@ $<  $(OBJDIR)/pciedma.o
+
+
+$(BINDIR)/test_pattern: $(OBJDIR)/test_pattern.o $(OBJDIR)/patterns.o $(OBJDIR)/pciedma_patterns.o
+	@echo -e "LD \t$@"
+	$(Q)$(CC) $(LDINC) $(LDFLAGS) $(CFLAGS) -o $@ $<  $(OBJDIR)/pciedma_patterns.o $(OBJDIR)/patterns.o
+
+clean:
+	@echo -e "CLEAN \t$(shell pwd)"
+	-$(Q)rm -f $(addprefix $(BINDIR)/,$(BINARIES))
+	-$(Q)rm -f $(BINDIR)/xiltest
+	-$(Q)rm -f $(BINDIR)/dmastream
+	-$(Q)rm -f $(BINDIR)/dmafft
+	-$(Q)rm -f $(BINDIR)/speedtest
+	-$(Q)rm -f $(BINDIR)/test_pattern
+
+	-$(Q)rm -f $(OBJ)
+	-$(Q)rm -f $(OBJDIR)/xiltest.o
+	-$(Q)rm -f $(OBJDIR)/dmastream.o
+	-$(Q)rm -f $(OBJDIR)/pciedma.o
+	-$(Q)rm -f $(OBJDIR)/fftcontrol.o
+	-$(Q)rm -f $(OBJDIR)/dmafft.o
+	-$(Q)rm -f $(OBJDIR)/speedtest.o
+	-$(Q)rm -f $(OBJDIR)/test_pattern.o
+	-$(Q)rm -f $(OBJDIR)/pciedma_patterns.o
+	-$(Q)rm -f $(DEPEND)
+	
+	

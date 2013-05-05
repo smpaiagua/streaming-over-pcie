@@ -1,0 +1,168 @@
+#include "pciedma.h"
+#include "fftcontrol.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdarg.h>
+
+
+#define DEBUG
+
+/* For Debugging */
+#ifdef DEBUG
+  #define PRINT	print
+#else
+  #define PRINT(...) ((void)0)
+#endif
+
+/* GLOBAL VARIABLES */
+/*----------------------*/
+extern void * bar;
+
+
+unsigned int readFFTstatus()
+{
+ 
+  if (bar == NULL){
+      PRINT("Error: BAR0 is not mapped\n");
+      return -1;
+  }
+  
+  return ((unsigned int*)bar)[FFT_INDEX + 1];
+ 
+}
+
+int configFFT(int size,int scaling, int fwdinv)
+{
+  unsigned int ctl;
+  
+  if (bar == NULL){
+      PRINT("Error: BAR0 is not mapped\n");
+      return -1;
+  }
+  
+    printf("Just wrote: %08x\n", ((unsigned int*)bar)[FFT_INDEX + 0]);
+
+  
+  if(size > 16 || size < 3){
+      PRINT("FFT size must be between 8 and 64k points\n");
+      return -1;
+  }
+   if(fwdinv < 0 || fwdinv > 1){
+      PRINT("Invalid forward/inverse selection\n");
+      return -1;
+  }
+  
+  ctl = 0;
+  ctl = (scaling<< SCALING_SHIFT) & SCALING_MASK;
+  ctl = ctl | (fwdinv << FWDINV_SHIFT);
+  ctl = ctl | size;
+  
+  printf("Writing configuration: %08x\n",ctl);
+  ((unsigned int*)bar)[FFT_INDEX + 0] = ctl;
+  
+  
+  return 0;
+}
+
+int setFFTsize(int size)
+{
+  unsigned int ctl;
+  unsigned int points, fwdinv, scaling;
+  
+  if (bar == NULL){
+      PRINT("Error: BAR0 is not mapped\n");
+      return -1;
+  }
+  
+  if(size > 16 || size < 3){
+      PRINT("FFT size must be between 8 and 64k points\n");
+      return -1;
+  }
+  
+  ctl = ((unsigned int*)bar)[FFT_INDEX + 0];
+  points = ctl & SIZE_MASK;
+  fwdinv = (ctl & FWDINV_MASK);
+  scaling = (ctl & SCALING_MASK);
+  
+  ctl = 0;
+  ctl = (scaling);
+  ctl = ctl | fwdinv;
+  ctl = ctl | size;
+  ((unsigned int*)bar)[FFT_INDEX + 0] = ctl;
+
+  
+  return 0;
+}
+
+// 0 forward; 1 - inverse
+int setFFTfwdinv(int fwdinv)
+{
+  unsigned int ctl;
+  unsigned int points, fwdinv_ctl, scaling;
+  
+  if (bar == NULL){
+      PRINT("Error: BAR0 is not mapped\n");
+      return -1;
+  }
+  
+  if(fwdinv < 0 || fwdinv > 1){
+      PRINT("Invalid forward/inverse selection\n");
+      return -1;
+  }
+  
+  ctl = ((unsigned int*)bar)[FFT_INDEX + 0];
+  points = ctl & SIZE_MASK;
+  fwdinv_ctl = (ctl & FWDINV_MASK);
+  scaling = (ctl & SCALING_MASK);
+  
+  
+  ctl = 0;
+  ctl = (scaling);
+  ctl = ctl | (fwdinv << FWDINV_SHIFT);
+  ctl = ctl | points;
+  ((unsigned int*)bar)[FFT_INDEX + 0] = ctl;
+
+  
+  return 0;
+}
+
+int setFFTscaling(int scale_sched)
+{
+  unsigned int ctl;
+  unsigned int points, fwdinv, scaling;
+  
+  if (bar == NULL){
+      PRINT("Error: BAR0 is not mapped\n");
+      return -1;
+  }
+  
+  ctl = ((unsigned int*)bar)[FFT_INDEX + 0];
+  points = ctl & SIZE_MASK;
+  fwdinv = (ctl & FWDINV_MASK);
+  scaling = (ctl & SCALING_MASK);
+  
+  ctl = 0;
+  ctl = ((scale_sched<<SCALING_SHIFT) & SCALING_MASK);
+  ctl = ctl | fwdinv;
+  ctl = ctl | points;
+  ((unsigned int*)bar)[FFT_INDEX + 0] = ctl;
+
+  
+  return 0;
+}
+
+int FFTreset()
+{
+  
+  if (bar == NULL){
+      PRINT("Error: BAR0 is not mapped\n");
+      return -1;
+  }
+  
+  ((unsigned int*)bar)[FFT_RST_INDEX] = FFT_RST_CODE;
+  
+  return 0;
+}
+
+

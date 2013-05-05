@@ -1,0 +1,200 @@
+#include "/root/Documents/spaiagua/Swinger/pcie_dev_driver/pciDriver/include/lib/pciDriver.h"
+#include <stdarg.h>
+
+#define MAX_KBUF (8*1024*1024)
+#define MAX_UBUF (64*1024*1024)
+
+/* Address ranges from system.mhs */
+
+#define PCIE_BASE 		0x0
+#define DMA_BASE 		0x1000
+#define BRAM_BASE 		0x2000
+#define SUMVEC_BASE0 		0x3000 	  
+#define SUMVEC_BASE1 		0x4000
+
+
+#define AXI_PCIE 		0x0
+#define BRAM_ABS_BASE		0x80004000
+
+
+/* Indexes based on 32-bit (4 bytes) accesses */
+
+#define PCIE_INDEX 		(PCI_BASE/0x4)
+#define DMA_INDEX 		(DMA_BASE/0x4)
+#define BRAM_INDEX		(BRAM_BASE/0x4)
+#define SUMVEC_INDEX0		(SUMVEC_BASE0/0x4)
+#define SUMVEC_INDEX1		(SUMVEC_BASE1/0x4)
+
+/* DMA Controller Register Space */
+#define MM2S_DMACR		0x0 	// MM2S DMA Control Register
+#define MM2S_DMASR		0x4 	// MM2S DMA Status Register
+#define MM2S_CURDESC		0x8 	// MM2S DMA Current Descriptor Pointer
+#define MM2S_TAILDESC		0x10 	// MM2S DMA Tail Descriptor Pointer
+#define S2MM_DMACR		0x30
+#define S2MM_DMASR		0x34
+#define S2MM_CURDESC		0x38
+#define S2MM_TAILDESC		0x40
+
+/* Bit Masks */
+#define DMACR_RS		0x1		// Run/Stop control bit (R/W)
+#define DMACR_RESET		0x4		// Soft Reset bit (R/W)
+#define DMACR_KEYHOLE		0x8		// Keyhole read (R/W)
+#define DMACR_IOC_IrqEn		0x1000		// Interrupt on Complete (IOC) Interrupt Enable (R/W)
+#define DMACR_Dly_IrqEn		0x2000		// Interrupt on Delay Timer Interrupt Enable (R/W)
+#define DMACR_Err_IrqEn		0x4000		// Interrupt on Error Interrupt Enable (R/W)
+#define DMACR_IRQThreshold	0xFF0000	// Interrupt Threshold value - 8bits - (R/W)
+#define DMACR_IRQDelay		0xFF000000	// Interrupt Delay Time Out - 8bits - (R/W)
+
+#define DMASR_HALTED		0x1		// Run/Stop state of the DMA channel (RO)
+#define DMASR_IDLE		0x2		// Idle state of the DMA channel (RO)
+#define DMASR_SGINCLD		0x8		// Scatter Gather Engine Included (RO)
+#define DMASR_DMAINTERR		0x10 		// DMA Internal Error (RO)
+#define DMASR_DMASLVERR		0x20 		// DMA Slave Error (RO)
+#define DMASR_DMADECERR		0x40 		// DMA Decode Error (RO)
+#define DMASR_SGINTERR		0x100 		// Scatter Gather Internal Error (RO)
+#define DMASR_SGSLVERR		0x200 		// Scatter Gather Slave Error (RO)
+#define DMASR_SGDECERR		0x400 		// Scatter Gather Decode Error (RO)
+#define DMASR_IOC_IRQ		0x1000 		// Interrupt on Complete (R/W)
+#define DMASR_DLY_IRQ		0x2000 		// Interrupt on Delay (R/W)
+#define DMASR_ERR_IRQ		0x4000 		// Interrupt on Error (R/W)
+#define DMASR_IRQTHRESHOLDSTS	0xFF0000 		// Interrupt Threshold Status - 8bits - (RO)
+#define DMASR_IRQDELAYSTS	0xFF000000 		// Interrupt Delay Time Status - 8bits - (RO)
+
+#define CURDESC_PTR		0xFFFFFFC0	// Current Descriptor Pointer - 26 bits - (RO) - Only written when DMACR.RS=0 and DMASR.Halted=1
+#define TAILDESC_PTR		0xFFFFFFC0	// Tail Descriptor Pointer - 26 bits - (R/W)
+
+/* Scatter Gather Descriptors */
+#define NXTDESC			0x0		// Next descriptor pointer
+#define BUFFER_ADDRESS		0x8		// Buffer address
+#define MC_CTL			0x10		// Multichannel Control bits
+#define STRIDE_CTL		0x14		// 2D Stride control bits
+#define CONTROL			0x18		// Control
+#define STATUS			0x1C		// Status
+
+/* Bit Masks */
+#define NXTDESC_PTR		0xFFFFFFC0	// Descriptor pointer mask - 26 bits
+
+#define BUFFADDR		0xFFFFFFFF	// Buffer address mask
+
+#define TDEST			0x1F		// TDEST signal for the data stream
+#define	TID			0x1F00		// TID signal to identify the stream
+#define TID_SHIFT		8
+#define TUSER			0xF0000		// TUSER signal for user-defined information
+#define TUSER_SHIFT		16
+#define ARCACHE			0xF000000	// ARCACHE signal for providing cacheable characteristics of the transfer (default - 0111)
+#define ARCACHE_DEF		0x7 		// Default value of 0111
+#define ARCACHE_SHIFT		24
+#define ARUSER			0xF0000000	// ARUSER signal for user-defined information (default - 0000)
+#define ARUSER_SHIFT		28
+#define AWCACHE			0XF000000	// AWCACHE signal from RX descriptor (default - 0011)
+#define AWCACHE_DEF 		0x3		// Default value of 0011
+#define AWCACHE_SHIFT		24
+#define AWUSER			0xF0000000	// AWUSER signal from RX descriptor (default - 0000)
+#define AWUSER_SHIFT		28
+
+#define STRIDE			0xFFFF		// Stride between the first address of successive horizontal reads
+#define VSIZE			0xFFF80000	// Number of horizontal lines for strided access
+#define VSIZE_SHIFT		19
+#define HSIZE			0xFFFF		// Number of bytes to transfer in each horizontal line (Substitutes CONTROL_BUFFLEN when using 2D Access)
+
+#define CONTROL_BUFFLEN		0x7FFFFF	// Buffer length - 23 bits
+#define CONTROL_TXEOF		0x4000000	// Transmit End Of Frame - 1 bit - MM2S ONLY
+#define CONTROL_TXSOF		0x8000000	// Transmit Start Of Frame - 1 bit - MM2S ONLY
+
+#define STATUS_TRANSF		0x7FFFFF	// Transferred bytes for this descriptor - 23 bits
+#define STATUS_RXEOF		0x4000000	// End of Frame - 1 bit - S2MM ONLY
+#define STATUS_RXSOF		0x8000000	// Start of Frame - 1 bit - S2MM ONLY
+#define STATUS_DMAINTERR	0x10000000	// DMA Internal Error - 1 bit
+#define STATUS_DMASLVERR	0x20000000	// DMA Slave Error - 1 bit
+#define STATUS_DMADECERR	0x40000000	// DMA Decode Error - 1 bit
+#define STATUS_CMPLT		0x80000000	// Completed transfer
+
+/* AXI Bridge for PCI Express Address Translation */
+#define AXIBAR2PCIEBAR0		0x20C		// AXIBAR2PCIEBAR0 register offset
+
+#define PCIE2AXI		0x80000000	// PCI to AXI address mapping
+
+#define AXI2PCIE_MASK		0xFF000000	// AXI can address 16MB (0x00FFFFFF) 
+
+/* DEBUGGING OPTIONS */
+/* ----------------- */
+
+//#define DEBUG
+
+/* For Debugging */
+#ifdef DEBUG
+  #define PRINT print
+#else
+  #define PRINT(...) ((void)0)
+#endif
+
+/* ----------------- */
+
+/* Initializes the framework by mapping the BAR of the PCIE bridge and resetting the DMA engine; Should be called prior to anything else
+ * Arguments: pdev - pcie device handler obtained from a successful call to open()
+ * Returns: 0 on sucess, -1 otherwise
+ */
+int initDMA(pd_device_t *pdev);
+
+/* Prepares a MM2S DMA transfer by mapping the user memory into device space, translating addresses and writing the SG descriptors to BRAM
+ * Arguments: pdev - pcie device handler
+ * 	      user_buffer - pointer to user buffer that holds the data to transmit
+ * 	      buf_size - size in bytes of the data to transmit
+ * Returns: 0 on sucess, -1 otherwise
+ */
+int setupSend(pd_device_t *pdev, void *user_buffer, unsigned int buf_size, int str_dest);
+
+/* Prepares a S2MM DMA transfer by mapping the user memory into device space, translating addresses and writing the SG descriptors to BRAM
+ * Arguments: pdev - pcie device handler
+ * 	      user_buffer - pointer to user buffer that holds the data to transmit
+ * 	      buf_size - size in bytes of the data to transmit
+ * 	      str_dest - stream destination (slave address)
+ * Returns: 0 on sucess, -1 otherwise
+ */
+int setupRecv(pd_device_t *pdev, void *user_buffer, unsigned int buf_size);
+
+/* Starts DMA MM2S transfer with the parameters set on the previous call to setupSend()
+ * Arguments: blocking - 1 for interrupt mode, 0 for non blocking mode
+ * Returns: 0 on success, -1 otherwise
+ */
+int startSend(pd_device_t *pdev, int blocking);
+
+/* Starts DMA S2MM transfer with the parameters set on the previous call to setupRecv()
+ * Arguments: blocking - 1 for interrupt mode, 0 for non blocking mode
+ * Returns: 0 on success, -1 otherwise
+ */
+int startRecv(pd_device_t *pdev, int blocking);
+
+/* Checks if the DMA MM2S transfer is complete and there were no errors; this function should be always called before starting other transfer
+ * Arguments: 
+ * Returns: 0 on success, -1 otherwise
+ */
+int checkSend();
+
+
+/* Checks if the DMA S2MM transfer is complete and there were no errors; 
+ * This function should be always called before using the receive buffer because it performs necessary syncing between the user buffer and kernel buffer
+ * Arguments: 
+ * Returns: 0 on success, -1 otherwise
+ */
+int checkRecv();
+
+/* Frees the user memory mapping to bus device space previously done for MM2S transfer
+ * Arguments: pdev - pcie device handler
+ * Returns: 0 on sucess, -1 otherwise
+ */
+int freeSend(pd_device_t *pdev);
+
+
+/* Frees the user memory mapping to bus device space previously done for S2MM transfer
+ * Arguments: pdev - pcie device handler
+ * Returns: 0 on sucess, -1 otherwise
+ */
+int freeRecv(pd_device_t *pdev);
+
+
+/* Stops the framework by unmpaping the pcie BAR
+ * Arguments: pdev - pcie device handler obtained from a successful call to open()
+ * Returns: 0 on sucess, -1 otherwise
+ */
+int stopDMA(pd_device_t *pdev);

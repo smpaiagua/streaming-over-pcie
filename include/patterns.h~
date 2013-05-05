@@ -1,0 +1,55 @@
+typedef struct sg_pat{
+  unsigned int addr;
+  unsigned int hsize;
+  unsigned int vsize;
+  unsigned int stride;
+  struct sg_pat *next;
+} sgentry_pattern;
+
+typedef struct {
+  unsigned long vma;
+  unsigned long size;
+  int handle_id;
+  int nents;
+  sgentry_pattern *sg;
+  pd_device_t *pci_handle;
+} pd_umem_pattern;
+
+/* sglist_new - Creates a new stack of scatter-gather descriptors for describing a pattern
+* Parameters: 
+* Returns: A pointer to the head of the stack
+*/
+sgentry_pattern *sglist_new();
+
+/* sglist_push - Pushes a new descriptor into the stack
+* Parameters: base - a pointer to the head of the stack
+* 	      addr - base address of the descriptor to insert
+* 	      hsize - size of the contiguous block described
+* 	      vsize - number of times the contiguous block is to be repeated
+* 	      stride - next contiguous block is fetched stride bytes after the starting position of the previous block
+* Returns: 0 on success, -1 otherwise
+*/
+int sglist_push(sgentry_pattern *base, unsigned int addr, unsigned int hsize, unsigned int vsize, unsigned int stride);
+
+sgentry_pattern *sglist_pop(sgentry_pattern *base);
+
+/* apply2dpattern - Applies a bi-dimensional pattern to the provided buffer
+* Parameters: umem - pointer to mapped user buffer
+*	      umem_pattern - pointer to hold resulting descriptor list
+*	      offset - starting position of the patter within the buffer
+*	      hsize - size of contiguous block, in bytes
+*	      stride - next contiguous block is fetched stride bytes after the starting position of the previous block
+* 	      vsize - number of times the contiguous block is to be repeated
+* Returns: 0 if the pattern could be applied successfuly, -1 otherwise
+*/
+int apply2dpattern(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offset, unsigned int hsize, unsigned int stride, unsigned int vsize);
+
+/* applyBlocking - Applies a blocking pattern (square matrixes only) to the provided buffer
+* Parameters: umem - pointer to mapped user buffer
+*	      umem_pattern - pointer to hold resulting descriptor list
+*	      bsize - size of the block to use in the blocking pattern (side)
+*	      mat_size - total matrix size (side)
+*	      elem_size - element size in bytes (4 bytes for integer)
+* Returns: 0 if the pattern could be applied successfuly, -1 otherwise
+*/
+int applyBlocking(pd_umem_t *umem, pd_umem_pattern **umem_pattern, int bsize, int mat_size, int elem_size);

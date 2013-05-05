@@ -1,0 +1,10 @@
+Storage Target: BPI Flash Single FPGA
+Storage Family: Virtex7
+128M
+FF
+flash_final
+/root/Documents/spaiagua/Swinger/flash
+
+MCS
+x16
+No
