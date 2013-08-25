@@ -30,7 +30,7 @@
 unsigned int tail_desc_snd, tail_desc_recv;
 pd_umem_t um_snd, um_recv;
 pd_umem_t *umem_tr_snd, *umem_tr_recv;
-void *bar;
+void *bar; // Pointer to the PCIE aperture
 int dest_tx; // Stream destination
 
 void print(const char *fmt, ...)
@@ -165,7 +165,7 @@ int addrTranslation(pd_umem_t *umem, pd_umem_t **umem_tr, unsigned int *base_ptr
 	}
 
 	// Save translated address
-	((*umem_tr)->sg[i]).addr = (umem->sg[i]).addr - base_addr;
+	((*umem_tr)->sg[i]).addr = (umem->sg[i]).addr - base_addr + AXI_PCIE; // maps the address to the correct position within the PCIE_Bridge Base Address
 	((*umem_tr)->sg[i]).size = (umem->sg[i]).size;
   }
 
@@ -245,7 +245,7 @@ void MM2Sreset(void *bar_ptr)
   
  // Set soft reset bit
  ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] =  ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] | DMACR_RESET;
- 
+
  // Check if reset is done
  do{
    read_reset = ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] & DMACR_RESET;
@@ -477,7 +477,7 @@ int write_pattern_send(pd_umem_pattern *umem_pat)
      PRINT("Error: Could not setup DMA transfer\n");                                                                                                             
      return -1;                                                                                                                                                  
   }  
-
+  
   free(umem_tr_snd);                                                                                                                                             
 }                                                                                                                                                                
 
@@ -575,7 +575,7 @@ int checkSendCompletion(void *bar_ptr,unsigned int desc_base)
   }
 
      
-  PRINT("Total bytes sent over %d descriptors: %d\n",i+1,total_size);
+  PRINT("MM2S: Total bytes sent over %d descriptors: %d\n",i+1,total_size);
 
    // Stop the MM2S channel by setting run/stop bit to 0
     ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] =  ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] & ~DMACR_RS;
@@ -642,7 +642,7 @@ PRINT("S2MM: CHECKING DESCRIPTOR: %08X\n",next_desc);
 
   }
  
-  PRINT("Total bytes sent over %d descriptors: %d\n",i+1,total_size);
+  PRINT("S2MM: Total bytes sent over %d descriptors: %d\n",i+1,total_size);
 
   if(status_reg & STATUS_CMPLT)
     PRINT("Descriptor transfer completed successfuly\n");
@@ -700,6 +700,7 @@ int initDMA(pd_device_t *pdev)
   PRINT("Resetting DMA controller\n");
   // Reset DMA controller
   MM2Sreset(bar);
+  
  
   return 0;
 }
@@ -747,6 +748,100 @@ int setupSend(pd_device_t *pdev, void *user_buffer, unsigned int buf_size, int s
    dest_tx = str_dest;
    
   return 0;
+}
+
+// Memory Map to Stream (Reads from the DDR and puts the data in the MM2S interface)
+int setupSendfromDDR(pd_device_t *pdev, unsigned int address, unsigned int buf_size, int str_dest)
+{
+  // Create a umem structure with translated addresses
+  umem_tr_snd = (pd_umem_t*)malloc(sizeof(pd_umem_t));
+  if(umem_tr_snd == NULL){
+     PRINT("Error: Could not malloc umem structure\n");
+     return(-1);
+  }
+
+  umem_tr_snd->vma = 0x0; // Not used
+  umem_tr_snd->size = buf_size; // Read a buf_size block 
+  umem_tr_snd->handle_id = 0; // Not used
+  umem_tr_snd->nents = 1;
+  umem_tr_snd->pci_handle = 0x0; // Not used
+  
+  umem_tr_snd->sg = (pd_umem_sgentry_t*)malloc(sizeof(pd_umem_sgentry_t)*1);
+  if(umem_tr_snd->sg == NULL){
+     PRINT("Error: Could not malloc sgentry structure\n");
+     return(-1);
+  }
+  
+  // Read a buf_size block from the DDR3
+  (umem_tr_snd->sg[0]).addr = 0x00000000 + address; // DDR3 base address (through the AXI2AXI connector) 
+  (umem_tr_snd->sg[0]).size = buf_size;
+  
+  PRINT("Writing SG descriptors to BRAM\n");
+  
+  // Set stream destination
+   dest_tx = str_dest;
+  
+  return(0);  
+}
+
+void genReset(unsigned long mask)
+{
+ unsigned int mask32 = 0xFFFF;
+
+ // Write reset mask to register 2
+ ((unsigned int*)bar)[CMU_INDEX + (CMU_KCML/4)] = (mask & mask32);
+
+ ((unsigned int*)bar)[CMU_INDEX + (CMU_KCMH/4)] = (mask >> 32) & mask32;
+ 
+ // Trigger reset by setting bit 0 of register 1 to 1
+ ((unsigned int*)bar)[CMU_INDEX + (CMU_KCR/4)] = CMU_ICR_RS;
+
+}
+
+unsigned int getInterrupt()
+{
+  return ((unsigned int*)bar)[CMU_INDEX + (CMU_KIVL/4)];
+}
+
+unsigned int cmuWrite(unsigned int reg_offset, unsigned int data)
+{
+ ((unsigned int*)bar)[CMU_INDEX + (reg_offset/4)] = data;
+}
+
+unsigned int cmuRead(unsigned int reg_offset)
+{
+ return ((unsigned int*)bar)[CMU_INDEX + (reg_offset/4)];
+}
+
+// Stream to Memory Map (Obtains data from the S2MM interface and writes to the DDR)
+int setupRecvtoDDR(pd_device_t *pdev, unsigned int address, unsigned int buf_size)
+{
+  // Create a umem structure with translated addresses
+  umem_tr_recv = (pd_umem_t*)malloc(sizeof(pd_umem_t));
+  if(umem_tr_recv == NULL){
+     PRINT("Error: Could not malloc umem structure\n");
+     return(-1);
+  }
+
+  umem_tr_recv->vma = 0x0; // Not used
+  umem_tr_recv->size = buf_size; // Read a buf_size block 
+  umem_tr_recv->handle_id = 0; // Not used
+  umem_tr_recv->nents = 1;
+  umem_tr_recv->pci_handle = 0x0; // Not used
+  
+  umem_tr_recv->sg = (pd_umem_sgentry_t*)malloc(sizeof(pd_umem_sgentry_t)*1);
+  if(umem_tr_recv->sg == NULL){
+     PRINT("Error: Could not malloc sgentry structure\n");
+     return(-1);
+  }
+  
+  // Read a buf_size block from the DDR3
+  (umem_tr_recv->sg[0]).addr = 0x00000000 + address; // DDR3 base address (through the AXI2AXI connector) 
+  (umem_tr_recv->sg[0]).size = buf_size;
+  
+  PRINT("Writing Recv SG descriptors to BRAM\n");
+  
+  return(0);  
 }
 
 /* Prepares a S2MM DMA transfer by mapping the user memory into device space, translating addresses and writing the SG descriptors to BRAM
@@ -832,6 +927,18 @@ int checkSend()
 {
   // Check DMA status and completion
   if(checkSendCompletion(bar,BRAM_BASE) < 0){
+     PRINT("Error: DMA transfer failed\n");
+     return -1;
+  }
+  
+  return 0;
+}
+
+
+// Version of checkRecv() call without a user buffer associated
+int checkRecvNoBuf()
+{
+  if(checkRecvCompletion(bar,BRAM_BASE+0x800) < 0){
      PRINT("Error: DMA transfer failed\n");
      return -1;
   }

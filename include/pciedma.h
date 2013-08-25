@@ -6,14 +6,15 @@
 
 /* Address ranges from system.mhs */
 
-#define PCIE_BASE 		0x0
+#define PCIE_BASE 		0x20000000 // was 0x0
 #define DMA_BASE 		0x1000
 #define BRAM_BASE 		0x2000
 #define SUMVEC_BASE0 		0x3000 	  
 #define SUMVEC_BASE1 		0x4000
+#define CMU_BASE                0x3000
 
 
-#define AXI_PCIE 		0x0
+#define AXI_PCIE 		0x20000000 // was 0x0
 #define BRAM_ABS_BASE		0x80004000
 
 
@@ -24,6 +25,7 @@
 #define BRAM_INDEX		(BRAM_BASE/0x4)
 #define SUMVEC_INDEX0		(SUMVEC_BASE0/0x4)
 #define SUMVEC_INDEX1		(SUMVEC_BASE1/0x4)
+#define CMU_INDEX		(CMU_BASE/0x4)
 
 /* DMA Controller Register Space */
 #define MM2S_DMACR		0x0 	// MM2S DMA Control Register
@@ -109,6 +111,26 @@
 #define STATUS_DMADECERR	0x40000000	// DMA Decode Error - 1 bit
 #define STATUS_CMPLT		0x80000000	// Completed transfer
 
+/* Register Mapping and Bit masks for the CMU */
+#define CMU_ICR			0x0		// Instruction Configuration Register
+#define CMU_KCR			0x4 		// Kernel Control Register
+#define CMU_KCML		0x8		// Kernel Control Mask Low
+#define CMU_KCMH		0xC		// Kernel Control Mask High
+#define CMU_KIVL		0x10		// Kernel Interrupt Vector Low
+#define CMU_KIVH		0x14		// Kernel Interrupt Vector High
+#define CMU_USR1		0x18		// User Register 1
+#define CMU_USR2		0x1C		// User Register 2
+
+#define CMU_ICR_RS		0x1		// Run/Stop Instruction Streaming
+#define CMU_ICR_IO		0x2		// Input (0) or Output (1) Instr Memory partition of the currently selected Core
+#define CMU_ICR_IBA		0x3FF0		// Instruction base address for the partition defined by the IO field
+#define CMU_ICR_CS		0x3F0000	// Select one of the 64 Cores in the MCPE
+#define CMU_ICR_Status		0x3000000	// Indicates the state of the Instruction Streaming operation
+
+#define CMU_KCR_Reset		0x1		// Reset the Cores selected by the Kernel Control Mask
+#define CMU_KCR_SetInt		0x2		// Activate interrupts from the Cores selected by the Kernel Control Mask
+#define CMU_KCR_Dest		0x30		// Configures the destination of Host streams
+
 /* AXI Bridge for PCI Express Address Translation */
 #define AXIBAR2PCIEBAR0		0x20C		// AXIBAR2PCIEBAR0 register offset
 
@@ -143,6 +165,25 @@ int initDMA(pd_device_t *pdev);
  * Returns: 0 on sucess, -1 otherwise
  */
 int setupSend(pd_device_t *pdev, void *user_buffer, unsigned int buf_size, int str_dest);
+
+
+/* Test function to obtain data from the DDR3 memory */
+int setupSendfromDDR(pd_device_t *pdev, unsigned int address, unsigned int buf_size, int str_dest);
+
+/* Test function to send data to the DDR3 memory */
+int setupRecvtoDDR(pd_device_t *pdev, unsigned int address, unsigned int buf_size);
+
+/* checkRecv with no associated user buffer */
+int checkRecvNoBuf();
+
+
+void genReset(unsigned long mask);
+
+unsigned int getInterrupt();
+
+unsigned int cmuWrite(unsigned int reg_offset, unsigned int data);
+
+unsigned int cmuRead(unsigned int reg_offset);
 
 /* Prepares a S2MM DMA transfer by mapping the user memory into device space, translating addresses and writing the SG descriptors to BRAM
  * Arguments: pdev - pcie device handler

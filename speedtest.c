@@ -29,7 +29,7 @@ int main(int argc, char **argv)
  }
  
  size = atoi(argv[1]);
- if(size > 262144){
+ if(size > 524288){
     printf("Wohaa, easy there. Maximum buffer size is 262144\n");
     return -1;
  }

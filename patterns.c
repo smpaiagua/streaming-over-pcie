@@ -125,6 +125,12 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
 
    if(N >= vsize){
      // Pattern fits into a descriptor space   
+      
+      // Test if hsize does not exceed 16 bits
+      if(hsize > 65535){
+	  PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	  return -1;
+      }
       sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i]).addr,hsize,vsize,stride);
       //offset = 0; // Offset has been included
       ndesc_final++;
@@ -139,6 +145,11 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
 	// Write previous descriptor
 	if (N != 0)
 	{
+	   // Test if hsize does not exceed 16 bits
+	   if(hsize > 65535){
+	      PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	      return -1;
+	   }
 	   sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i]).addr,hsize,N,stride);
 	   ndesc_final++;
 	   vsize -= N;
@@ -146,11 +157,20 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
 	
 	// Write fraction last block on current descriptor
 	base_addr += N*stride;
+	
+	
+	
+	if(F > 65535){
+	    PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	    return -1;}
 	sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i]).addr,F,1,stride);
 	ndesc_final++;
 
 	// Write remainder of last block on next descriptor
 	base_addr = 0;
+	if(hsize-F > 65535){
+	    PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	    return -1;}
 	sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i+1]).addr,hsize-F,1,stride);
 	ndesc_final++;
 	vsize -= 1;
@@ -160,6 +180,10 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
       else if (F >= hsize)
       {
 	// Write previous descriptor including the current block
+	
+	if(hsize > 65535){
+	    PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	    return -1;}
 	sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i]).addr, hsize, N+1,stride);
 	ndesc_final++;
 	vsize -= (N+1);
@@ -313,7 +337,8 @@ int apply2dpattern(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int
   if(create_pattern_struct(umem,umem_pattern)<0)
 	return -1;
 
-  pattern2d(umem,umem_pattern,offset,hsize,stride,vsize);
+  if(pattern2d(umem,umem_pattern,offset,hsize,stride,vsize)<0)
+    return -1;
   
   return 0;
 }
@@ -389,8 +414,6 @@ int applyBlocking_recv(int bsize, int mat_size, int elem_size)
  * Parameters: umem - pointer to mapped user buffer
  *	       umem_pattern - pointer to hold resulting descriptor list
  *	       offset - the starting position of the pattern, in bytes
- * 	       hsize - the repeated contiguous block, in bytes
- *	       stride - next contiguous block starts stride bytes after the starting position of the previous
  *	       total_size - total size of the block to which to apply the pattern
  */
 int applyLinear(pd_umem_t *umem, pd_umem_pattern **umem_pattern, int offset, int hsize, int stride, int total_size)
@@ -401,9 +424,10 @@ int applyLinear(pd_umem_t *umem, pd_umem_pattern **umem_pattern, int offset, int
 	return -1;
 
   total_size -= offset;
-  
-  // Calculates the integer number of repetitions that fit in the specified total_size
-  vsize = total_size / stride;
+  hsize -= offset;
+  stride -= offset;
+
+  vsize = 1;
   
   return pattern2d(umem, umem_pattern, offset, hsize, stride, vsize);
 }
@@ -472,8 +496,8 @@ int applyBlocking(pd_umem_t *umem, pd_umem_pattern **umem_pattern, int bsize, in
   block_line = mat_size/bsize;	// number of blocks per line
   for(i=0;i< block_line; i++)
    for(j=0;j < block_line; j++)
-    pattern2d(umem, umem_pattern, j*bsize_bytes + i*full_bsize_bytes*block_line, bsize_bytes, mat_size*elem_size, bsize); // Repeat 2D pattern for each block within the matrix
-
+     if(pattern2d(umem, umem_pattern, j*bsize_bytes + i*full_bsize_bytes*block_line, bsize_bytes, mat_size*elem_size, bsize)<0) // Repeat 2D pattern for each block within the matrix
+	return -1;
   return 0;
 }
 

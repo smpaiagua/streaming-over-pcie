@@ -17,28 +17,19 @@
  *******************************************************************/
 
 #include "pciedma.h"
+#include "desc_mgmt.h"
 #include "patterns.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
- #include <stdarg.h>
 
-
-
-#define DEBUG
-
-/* For Debugging */
-#ifdef DEBUG
-  #define PRINT	print
-#else
-  #define PRINT(...) ((void)0)
-#endif
 
 /* GLOBAL VARIABLES */
 /*----------------------*/
 unsigned int tail_desc_snd, tail_desc_recv;
 pd_umem_t um_snd, um_recv;
+pd_umem_t *umem_tr_snd, *umem_tr_recv;
 void *bar;
 int dest_tx; // Stream destination
 
@@ -166,7 +157,7 @@ int addrTranslation(pd_umem_t *umem, pd_umem_t **umem_tr, unsigned int *base_ptr
   // Get base address from first SG descriptor
   base_addr = (umem->sg[0]).addr & AXI2PCIE_MASK;
 
-// All the remaining descriptors must fit within the addressable space of the AXI bus...
+  // All the remaining descriptors must fit within the addressable space of the AXI bus...
   for(i = 0; i < umem->nents; i++){
 	if((umem->sg[i]).addr & AXI2PCIE_MASK != base_addr){
 	   PRINT("Error: Could not map descriptors into addressable range of the AXI bus\n");
@@ -174,7 +165,7 @@ int addrTranslation(pd_umem_t *umem, pd_umem_t **umem_tr, unsigned int *base_ptr
 	}
 
 	// Save translated address
-	((*umem_tr)->sg[i]).addr = (umem->sg[i]).addr - base_addr;
+	((*umem_tr)->sg[i]).addr = (umem->sg[i]).addr - base_addr + AXI_PCIE; // maps the address to the correct position within the PCIE_Bridge Base Address
 	((*umem_tr)->sg[i]).size = (umem->sg[i]).size;
   }
 
@@ -254,7 +245,7 @@ void MM2Sreset(void *bar_ptr)
   
  // Set soft reset bit
  ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] =  ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] | DMACR_RESET;
- 
+
  // Check if reset is done
  do{
    read_reset = ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] & DMACR_RESET;
@@ -334,7 +325,6 @@ void write_desc_pattern(void *bar_ptr, unsigned int cur_desc, int first, int las
   ((unsigned int*)bar_ptr)[(cur_desc/4) + (STRIDE_CTL/4)] = stride_reg;
   //-------------------------------------------------
   
-  
   // Write Control Register
   ctl_reg = 0;
   ctl_reg = desc_pat.hsize;
@@ -349,12 +339,13 @@ void write_desc_pattern(void *bar_ptr, unsigned int cur_desc, int first, int las
 /* Setup SG Desriptors for a DMA transfer
  * 
  */
-int setupSGDesc_pattern(pd_umem_pattern *umem, void *bar_ptr, unsigned int base_loc, unsigned int *tail_desc, int istx)
+int setupSGDesc_pattern(pd_umem_pattern *umem_pat, void *bar_ptr, unsigned int base_loc, unsigned int *tail_desc, int istx)
 {
   unsigned int next_desc, buff_addr, buff_len;
   int i,last = 0;
+  sgentry_pattern *cur_desc;
   
-  if(base_loc < BRAM_BASE || base_loc > BRAM_BASE + 0x1000){
+  if(base_loc < BRAM_BASE || base_loc > BRAM_BASE + 0x800){
       PRINT("Error: Base location for descriptor ring must be within the BRAM Adress Space\n");
       return -1;
   }
@@ -364,28 +355,24 @@ int setupSGDesc_pattern(pd_umem_pattern *umem, void *bar_ptr, unsigned int base_
       return -1;
   }
   
-  PRINT("Number of SG entries: %d\n", umem->nents );
+  PRINT("Number of SG entries: %d\n", umem_pat->nents );
 		
 	// Create descriptors and write them to the BRAM memory
 	next_desc = (unsigned int)base_loc;
-	for(i=0;i<umem->nents;i++) {
-		PRINT("Descriptor %d: %08x - %08x\n", i, (umem->sg[i]).addr, (umem->sg[i]).size);
-		
-		buff_addr = (umem->sg[i]).addr;
-		buff_len = (umem->sg[i]).size;
-		
-		if(buff_len >= 0x800000){
-		    PRINT("Error: Buffer is larger than 23 bits. Aborting\n");
-		    return -1;
-		}
+	for(i=0;i<umem_pat->nents;i++) {
+		cur_desc = sglist_pop(umem_pat->sg);
+		PRINT("Descriptor %d: %08x - %d - %d - %d \n", i, cur_desc->addr, cur_desc->hsize, cur_desc->stride, cur_desc->vsize);
 		
 		// Save the location of the tail descriptor
-		if(i == (umem->nents - 1)){
+		if(i == (umem_pat->nents - 1)){
 		  *tail_desc = next_desc;
 		  last = 1;
 		}
 
-                write_desc(bar_ptr, next_desc, (i==0), last, buff_addr, buff_len, istx);
+                write_desc_pattern(bar_ptr, next_desc, (i==0), last, *cur_desc, istx);
+		
+		// Free popped descriptor
+		free(cur_desc);
 		
 		next_desc += + 0x40; // Next descriptor is placed 16 words after current one
 	}
@@ -473,6 +460,49 @@ int setupDMArecv(void *bar_ptr, unsigned int cur_desc)
     return 0;
 }
 
+/* Writes the descriptors resulting from patternization into the BRAM and configures the DMA send transfer
+* Arguments: umem_pat - pointer to structure containing the descriptors resulting from patternization
+* Returns: 0 on success, -1 otherwise
+*/
+int write_pattern_send(pd_umem_pattern *umem_pat)
+{
+  // Setup translated SG descriptors in the BRAM
+  if(setupSGDesc_pattern(umem_pat,bar,BRAM_BASE,&tail_desc_snd,1) < 0){ 
+      PRINT("Error: Could not setup DMA transfer\n");
+      return -1; 
+  }
+
+  PRINT("Setting up DMA send\n");
+  if(setupDMAsend(bar,BRAM_BASE) < 0){    
+     PRINT("Error: Could not setup DMA transfer\n");                                                                                                             
+     return -1;                                                                                                                                                  
+  }  
+  
+  free(umem_tr_snd);                                                                                                                                             
+}                                                                                                                                                                
+
+/* Writes the descriptors resulting from patternization into the BRAM and configures the DMA receive transfer
+* Arguments: umem_pat - pointer to structure containing the descriptors resulting from patternization
+* Returns: 0 on success, -1 otherwise
+*/
+int write_pattern_recv(pd_umem_pattern *umem_pat)
+{
+  // Setup translated SG descriptors in the BRAM
+  if(setupSGDesc_pattern(umem_pat,bar,BRAM_BASE+0x800,&tail_desc_recv,0) < 0){ 
+    PRINT("Error: Could not setup DMA transfer\n");
+    return -1; 
+  }
+ 
+  PRINT("Setting up DMA receive\n");
+  if(setupDMArecv(bar,BRAM_BASE+0x800) < 0){ 
+    PRINT("Error: Could not setup DMA transfer\n");
+    return -1; 
+  }
+  
+  free(umem_tr_recv);
+}
+
+
 void writeTailSend(void *bar_ptr, unsigned int tail_desc)
 {
   //4. Write an absolute address to the tail descriptor register
@@ -545,7 +575,7 @@ int checkSendCompletion(void *bar_ptr,unsigned int desc_base)
   }
 
      
-  PRINT("Total bytes sent over %d descriptors: %d\n",i+1,total_size);
+  PRINT("MM2S: Total bytes sent over %d descriptors: %d\n",i+1,total_size);
 
    // Stop the MM2S channel by setting run/stop bit to 0
     ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] =  ((unsigned int*)bar_ptr)[DMA_INDEX + (MM2S_DMACR/4)] & ~DMACR_RS;
@@ -566,8 +596,7 @@ int checkRecvCompletion(void *bar_ptr,unsigned int desc_base)
   }
 
   PRINT("Current descriptor being worked on: %08x\n",((unsigned int*)bar_ptr)[DMA_INDEX + (S2MM_CURDESC/4)]); 
-  
-    
+
   // Check if DMA Channel is Idle
   do{
     status_reg = ((unsigned int*)bar_ptr)[DMA_INDEX + (S2MM_DMASR/4)] & DMASR_IDLE;
@@ -582,6 +611,9 @@ int checkRecvCompletion(void *bar_ptr,unsigned int desc_base)
   total_size = 0;
   i = 0;
   while(1){
+
+PRINT("S2MM: CHECKING DESCRIPTOR: %08X\n",next_desc);
+
     status_reg = ((unsigned int*)bar_ptr)[(next_desc/4) + (STATUS/4)];
     
     if(status_reg & STATUS_CMPLT)
@@ -601,7 +633,7 @@ int checkRecvCompletion(void *bar_ptr,unsigned int desc_base)
 
     // Erase status descriptor
     ((unsigned int*)bar_ptr)[(next_desc/4) + (STATUS/4)] = 0;
-
+   PRINT("TAIL_DESC: %08X\n",tail_desc_recv); 
     if(next_desc == tail_desc_recv)
       break; // Reached end of descriptor chain
     
@@ -610,7 +642,7 @@ int checkRecvCompletion(void *bar_ptr,unsigned int desc_base)
 
   }
  
-  PRINT("Total bytes sent over %d descriptors: %d\n",i+1,total_size);
+  PRINT("S2MM: Total bytes sent over %d descriptors: %d\n",i+1,total_size);
 
   if(status_reg & STATUS_CMPLT)
     PRINT("Descriptor transfer completed successfuly\n");
@@ -668,6 +700,7 @@ int initDMA(pd_device_t *pdev)
   PRINT("Resetting DMA controller\n");
   // Reset DMA controller
   MM2Sreset(bar);
+  
  
   return 0;
 }
@@ -681,7 +714,6 @@ int initDMA(pd_device_t *pdev)
  */
 int setupSend(pd_device_t *pdev, void *user_buffer, unsigned int buf_size, int str_dest)
 {
-  pd_umem_t *umem_tr;
   unsigned int base_axi2pcie;
   
   int i;
@@ -692,20 +724,20 @@ int setupSend(pd_device_t *pdev, void *user_buffer, unsigned int buf_size, int s
   }
 
   // Map user buffer into device space
-  if(pd_mapUserMemory( pdev, user_buffer, buf_size, &um_snd) < 0){
+  if(pd_mapUserMemory(pdev, user_buffer, buf_size, &um_snd) < 0){
       PRINT("Error: Could not allocate provided user buffer\n");
       return -1;
   }
   
   // Translate addresses to the AXI bus side
-  if( addrTranslation(&um_snd, &umem_tr, &base_axi2pcie) < 0){
+  if(addrTranslation(&um_snd, &umem_tr_snd, &base_axi2pcie) < 0){
      PRINT("Error: Could not translate addresses for the AXI bus\n");
      return -1;
   }
 
   PRINT("Setting address translation\n");
   // Set Address translation in the PCIE Core
-  if( setAXI2PCIEbar(base_axi2pcie, bar) < 0){
+  if(setAXI2PCIEbar(base_axi2pcie, bar) < 0){
      PRINT("Error: Could not configure address translation on the PCIe core\n");
      return -1;
   }
@@ -715,21 +747,95 @@ int setupSend(pd_device_t *pdev, void *user_buffer, unsigned int buf_size, int s
    // Set stream destination
    dest_tx = str_dest;
    
-  // Setup translated SG descriptors in the BRAM
-  if(setupSGDesc(umem_tr,bar,BRAM_BASE,&tail_desc_snd,1) < 0){
-      PRINT("Error: Could not setup DMA transfer\n");
-      return -1;
+  return 0;
+}
+
+// Memory Map to Stream (Reads from the DDR and puts the data in the MM2S interface)
+int setupSendfromDDR(pd_device_t *pdev, unsigned int buf_size, int str_dest)
+{
+  // Create a umem structure with translated addresses
+  umem_tr_snd = (pd_umem_t*)malloc(sizeof(pd_umem_t));
+  if(umem_tr_snd == NULL){
+     PRINT("Error: Could not malloc umem structure\n");
+     return(-1);
+  }
+
+  umem_tr_snd->vma = 0x0; // Not used
+  umem_tr_snd->size = buf_size; // Read a buf_size block 
+  umem_tr_snd->handle_id = 0; // Not used
+  umem_tr_snd->nents = 1;
+  umem_tr_snd->pci_handle = 0x0; // Not used
+  
+  umem_tr_snd->sg = (pd_umem_sgentry_t*)malloc(sizeof(pd_umem_sgentry_t)*1);
+  if(umem_tr_snd->sg == NULL){
+     PRINT("Error: Could not malloc sgentry structure\n");
+     return(-1);
   }
   
-   PRINT("Setting up DMA send\n");  
-   if(setupDMAsend(bar,BRAM_BASE) < 0){
-      PRINT("Error: Could not setup DMA transfer\n");
-      return -1;
-   }
+  // Read a buf_size block from the DDR3
+  (umem_tr_snd->sg[0]).addr = 0x00000000; // DDR3 base address (through the AXI2AXI connector) 
+  (umem_tr_snd->sg[0]).size = buf_size;
   
-  free(umem_tr);
+  PRINT("Writing SG descriptors to BRAM\n");
   
-  return 0;
+  // Set stream destination
+   dest_tx = str_dest;
+  
+  return(0);  
+}
+
+void genReset(unsigned int mask)
+{
+  unsigned int CMU_BASE = 0x3000;
+  unsigned int CMU_INDEX = (CMU_BASE/0x4);
+
+ // Write reset mask to register 2
+ ((unsigned int*)bar)[CMU_INDEX + 2] = mask;
+
+ ((unsigned int*)bar)[CMU_INDEX + 3] = mask;
+ 
+ // Trigger reset by setting bit 0 of register 1 to 1
+ ((unsigned int*)bar)[CMU_INDEX + 1] = 0x1;
+
+}
+
+unsigned int getInterrupt()
+{
+  unsigned int CMU_BASE = 0x3000;
+  unsigned int CMU_INDEX = (CMU_BASE/0x4);
+
+  return ((unsigned int*)bar)[CMU_INDEX + 4];
+}
+
+// Stream to Memory Map (Obtains data from the S2MM interface and writes to the DDR)
+int setupRecvtoDDR(pd_device_t *pdev, unsigned int address, unsigned int buf_size)
+{
+  // Create a umem structure with translated addresses
+  umem_tr_recv = (pd_umem_t*)malloc(sizeof(pd_umem_t));
+  if(umem_tr_recv == NULL){
+     PRINT("Error: Could not malloc umem structure\n");
+     return(-1);
+  }
+
+  umem_tr_recv->vma = 0x0; // Not used
+  umem_tr_recv->size = buf_size; // Read a buf_size block 
+  umem_tr_recv->handle_id = 0; // Not used
+  umem_tr_recv->nents = 1;
+  umem_tr_recv->pci_handle = 0x0; // Not used
+  
+  umem_tr_recv->sg = (pd_umem_sgentry_t*)malloc(sizeof(pd_umem_sgentry_t)*1);
+  if(umem_tr_recv->sg == NULL){
+     PRINT("Error: Could not malloc sgentry structure\n");
+     return(-1);
+  }
+  
+  // Read a buf_size block from the DDR3
+  (umem_tr_recv->sg[0]).addr = 0x00000000 + address; // DDR3 base address (through the AXI2AXI connector) 
+  (umem_tr_recv->sg[0]).size = buf_size;
+  
+  PRINT("Writing Recv SG descriptors to BRAM\n");
+  
+  return(0);  
 }
 
 /* Prepares a S2MM DMA transfer by mapping the user memory into device space, translating addresses and writing the SG descriptors to BRAM
@@ -740,7 +846,6 @@ int setupSend(pd_device_t *pdev, void *user_buffer, unsigned int buf_size, int s
  */
 int setupRecv(pd_device_t *pdev, void *user_buffer, unsigned int buf_size)
 {
-  pd_umem_t *umem_tr;
   unsigned int base_axi2pcie;
   
   int i;
@@ -757,34 +862,11 @@ int setupRecv(pd_device_t *pdev, void *user_buffer, unsigned int buf_size)
   }
   
   // Translate addresses to the AXI bus side
-  if( addrTranslation(&um_recv, &umem_tr, &base_axi2pcie) < 0){
+  if( addrTranslation(&um_recv, &umem_tr_recv, &base_axi2pcie) < 0){
      PRINT("Error: Could not translate addresses for the AXI bus\n");
      return -1;
   }
 
-  PRINT("Setting address translation\n");
-  // Set Address translation in the PCIE Core
-  if( setAXI2PCIEbar(base_axi2pcie, bar) < 0){
-     PRINT("Error: Could not configure address translation on the PCIe core\n");
-     return -1;
-  }
-  
-   PRINT("Writing SG descriptors to BRAM\n");
-  // Setup translated SG descriptors in the BRAM
-  if(setupSGDesc(umem_tr,bar,BRAM_BASE+0x800,&tail_desc_recv,0) < 0){
-      PRINT("Error: Could not setup DMA transfer\n");
-      return -1;
-  }
-  
-  PRINT("Setting up DMA receive\n");  
-   if(setupDMArecv(bar,BRAM_BASE+0x800) < 0){
-      PRINT("Error: Could not setup DMA receive\n");
-      return -1;
-   }
-  
-  free(umem_tr);
-
-  
   return 0; 
 }
 
@@ -794,8 +876,12 @@ int setupRecv(pd_device_t *pdev, void *user_buffer, unsigned int buf_size)
  */
 int startSend(pd_device_t *pdev, int blocking)
 {
+
+//PRINT("INSIDE STARTSEND\n");
+//dumpBRAM(bar);
+
    writeTailSend(bar,tail_desc_snd);
-   
+  
    if(blocking){
      PRINT("Wait on interrupt\n");
      if(waitIOC(pdev,bar)<0){
@@ -803,7 +889,7 @@ int startSend(pd_device_t *pdev, int blocking)
      return -1;
      }
    }
-   
+
    return 0;  
 }
 
@@ -842,6 +928,18 @@ int checkSend()
   return 0;
 }
 
+
+// Version of checkRecv() call without a user buffer associated
+int checkRecvNoBuf()
+{
+  if(checkRecvCompletion(bar,BRAM_BASE+0x800) < 0){
+     PRINT("Error: DMA transfer failed\n");
+     return -1;
+  }
+  
+  return 0;
+}
+
 /* Checks if the DMA S2MM transfer is complete and there were no errors; 
  * This function should be always called before using the receive buffer because it performs necessary syncing between the user buffer and kernel buffer
  * Arguments: 
@@ -850,6 +948,7 @@ int checkSend()
 int checkRecv()
 {
   // Check DMA status and completion
+
   if(checkRecvCompletion(bar,BRAM_BASE+0x800) < 0){
      PRINT("Error: DMA transfer failed\n");
      return -1;

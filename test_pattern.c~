@@ -83,7 +83,7 @@ for(i=1; i < 16; i++)
     if (i%32 == 0 && i!=0)
      printf("\n");
   
-    printf("%d ", ((int*)mems)[i]);
+    //printf("%d ", ((int*)mems)[i]);
     
   } 
 

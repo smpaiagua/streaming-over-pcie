@@ -3,22 +3,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-typedef struct sg_pat{
-  unsigned int addr;
-  unsigned int hsize;
-  unsigned int vsize;
-  unsigned int stride;
-  struct sg_pat *next;
-} sgentry_pattern;
+#include "patterns.h"
+#include "pciedma.h"
+#include "desc_mgmt.h"
 
-typedef struct {
-  unsigned long vma;
-  unsigned long size;
-  int handle_id;
-  int nents;
-  sgentry_pattern *sg;
-  pd_device_t *pci_handle;
-} pd_umem_pattern;
+/* GLOBAL VARIABLES FROM pciedma.h */
+pd_umem_t *umem_tr_snd, *umem_tr_recv;
+
 
 sgentry_pattern *sglist_new()
 {
@@ -26,7 +17,7 @@ sgentry_pattern *sglist_new()
  
  base = (sgentry_pattern*)malloc(sizeof(sgentry_pattern));
  if (base == NULL){
-    printf("Error: Could not malloc new list element\n");
+    PRINT("Error: Could not malloc new list element\n");
     return NULL;
  }
  
@@ -47,7 +38,7 @@ int sglist_push(sgentry_pattern *base, unsigned int addr, unsigned int hsize, un
  // Found insertion point
  new = (sgentry_pattern*)malloc(sizeof(sgentry_pattern));
  if (new == NULL){
-    printf("Error: Could not malloc new list element\n");
+    PRINT("Error: Could not malloc new list element\n");
     return -1;
  }
  
@@ -77,19 +68,18 @@ sgentry_pattern *sglist_pop(sgentry_pattern *base)
  return next;
 }
 
-
 int create_pattern_struct(pd_umem_t *umem, pd_umem_pattern **umem_pattern)
 {
 	
   if (umem->nents == 0){
-     printf("Error: SG list is empty\n");
+     PRINT("Error: SG list is empty\n");
      return -1;
   } 
 
   // Create a umem structure with translated addresses
   *umem_pattern = (pd_umem_pattern*)malloc(sizeof(pd_umem_pattern));
   if(*umem_pattern == NULL){
-     printf("Error: Could not malloc umem structure\n");
+     PRINT("Error: Could not malloc umem structure\n");
      return(-1);
   }
 
@@ -135,6 +125,12 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
 
    if(N >= vsize){
      // Pattern fits into a descriptor space   
+      
+      // Test if hsize does not exceed 16 bits
+      if(hsize > 65535){
+	  PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	  return -1;
+      }
       sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i]).addr,hsize,vsize,stride);
       //offset = 0; // Offset has been included
       ndesc_final++;
@@ -149,6 +145,11 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
 	// Write previous descriptor
 	if (N != 0)
 	{
+	   // Test if hsize does not exceed 16 bits
+	   if(hsize > 65535){
+	      PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	      return -1;
+	   }
 	   sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i]).addr,hsize,N,stride);
 	   ndesc_final++;
 	   vsize -= N;
@@ -156,11 +157,20 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
 	
 	// Write fraction last block on current descriptor
 	base_addr += N*stride;
+	
+	
+	
+	if(F > 65535){
+	    PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	    return -1;}
 	sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i]).addr,F,1,stride);
 	ndesc_final++;
 
 	// Write remainder of last block on next descriptor
 	base_addr = 0;
+	if(hsize-F > 65535){
+	    PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	    return -1;}
 	sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i+1]).addr,hsize-F,1,stride);
 	ndesc_final++;
 	vsize -= 1;
@@ -170,6 +180,10 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
       else if (F >= hsize)
       {
 	// Write previous descriptor including the current block
+	
+	if(hsize > 65535){
+	    PRINT("Hsize for current descriptor exceeds 16 bits. Please rearrange your data\n");
+	    return -1;}
 	sglist_push((*umem_pattern)->sg,base_addr+(umem->sg[i]).addr, hsize, N+1,stride);
 	ndesc_final++;
 	vsize -= (N+1);
@@ -182,6 +196,42 @@ int pattern2d(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offs
  (*umem_pattern)->nents = ndesc_final;
 
  return 0; 
+}
+
+
+/* compressData - Takes a 2D pattern and transforms it into a stream-ready block by allocating a new buffer. Pattern must fit within ubuf 
+* Parameters: ubuf - pointer to original user buffer
+*	      new_buf - pointer to the newly allocated user buffer
+*	      buf_size - will hold the size of the newly allocated buffer
+*	      hsize - HSIZE of the pattern
+*	      stride - STRIDE of the pattern
+*	      vsize - VSIZE of the pattern
+* Returns : 0 if successful, -1 otherwise
+*/
+int compressData(void *ubuf, void **new_ubuf, int *buf_size, unsigned int offset, unsigned int hsize, unsigned int stride, unsigned int vsize)
+{
+ int new_size;
+ int i,j,ctr;
+
+ new_size = hsize*vsize;
+
+ if(posix_memalign((void**)new_ubuf, 16, new_size)!= 0){
+   PRINT("Could not allocate new user buffer\n");
+   return -1;
+ }
+
+ *buf_size = new_size;
+ ctr = 0;
+for (i=0; i < vsize; i++)
+{
+  for (j=0;j < hsize/4; j++)
+  {
+    ((int *)(*new_ubuf))[ctr] = ((int *)ubuf)[offset/4 + i*stride/4 + j];
+     ctr++;
+  }
+}
+ 
+return 0;
 }
 
 int pattern2d_old(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int offset, unsigned int hsize, unsigned int stride, unsigned int vsize)
@@ -287,9 +337,131 @@ int apply2dpattern(pd_umem_t *umem, pd_umem_pattern **umem_pattern, unsigned int
   if(create_pattern_struct(umem,umem_pattern)<0)
 	return -1;
 
-  pattern2d(umem,umem_pattern,offset,hsize,stride,vsize);
+  if(pattern2d(umem,umem_pattern,offset,hsize,stride,vsize)<0)
+    return -1;
   
   return 0;
+}
+
+int apply2d_send(int offset, int hsize, int stride, int vsize)
+{
+ pd_umem_pattern *umem_pat;
+
+ if (apply2dpattern(umem_tr_snd, &umem_pat, offset, hsize, stride, vsize) < 0){
+   return -1;
+ }
+
+ if (write_pattern_send(umem_pat) < 0){
+   return -1;
+ }
+
+ return 0;
+}
+
+
+int apply2d_recv(int offset, int hsize, int stride, int vsize)
+{
+ pd_umem_pattern *umem_pat;
+
+ if (apply2dpattern(umem_tr_recv, &umem_pat, offset, hsize, stride, vsize) < 0){
+   return -1;
+ }
+
+ if (write_pattern_recv(umem_pat) < 0){
+   return -1;
+ }
+
+ return 0;
+}
+
+
+int applyBlocking_send(int bsize, int mat_size, int elem_size)
+{
+  pd_umem_pattern *umem_pat;
+
+  // Apply blocking pattern to the translated descriptor umem_tr_snd
+  if (applyBlocking(umem_tr_snd, &umem_pat, bsize, mat_size, elem_size) < 0){
+    return -1;
+  }
+ 
+  // Write patternized descriptor into BRAM and setup DMA send
+  if (write_pattern_send(umem_pat) < 0){
+    return -1;
+  }
+
+  return 0;
+}
+
+
+int applyBlocking_recv(int bsize, int mat_size, int elem_size)
+{
+  pd_umem_pattern *umem_pat;
+
+  // Apply blocking pattern to the translated descriptor umem_tr_recv
+  if (applyBlocking(umem_tr_recv, &umem_pat, bsize, mat_size, elem_size) < 0){
+    return -1;
+  }
+ 
+  // Write patternized descriptor into BRAM and setup DMA send
+  if (write_pattern_recv(umem_pat) < 0){
+    return -1;
+  }
+
+  return 0;
+}
+
+/* applyLinear - Applies a linear pattern to a total_size long block. hsize will be repeated an integer number of times 
+ * Parameters: umem - pointer to mapped user buffer
+ *	       umem_pattern - pointer to hold resulting descriptor list
+ *	       offset - the starting position of the pattern, in bytes
+ * 	       hsize - the repeated contiguous block, in bytes
+ *	       stride - next contiguous block starts stride bytes after the starting position of the previous
+ *	       total_size - total size of the block to which to apply the pattern
+ */
+int applyLinear(pd_umem_t *umem, pd_umem_pattern **umem_pattern, int offset, int hsize, int stride, int total_size)
+{
+ int vsize = 0;
+
+  if(create_pattern_struct(umem,umem_pattern)<0)
+	return -1;
+
+  total_size -= offset;
+  
+  // Calculates the integer number of repetitions that fit in the specified total_size
+  vsize = total_size / stride;
+  
+  return pattern2d(umem, umem_pattern, offset, hsize, stride, vsize);
+}
+
+int applyLinear_send(int offset, int hsize, int stride, int total_size)
+{
+ pd_umem_pattern *umem_pat;
+
+ if (applyLinear(umem_tr_snd, &umem_pat, offset, hsize, stride, total_size) <0){
+   return -1;
+ }
+
+ if (write_pattern_send(umem_pat) < 0){
+   return -1;
+ }
+
+ return 0;
+}
+
+
+int applyLinear_recv(int offset, int hsize, int stride, int total_size)
+{
+ pd_umem_pattern *umem_pat;
+
+ if (applyLinear(umem_tr_recv, &umem_pat, offset, hsize, stride, total_size) <0){
+   return -1;
+ }
+
+ if (write_pattern_recv(umem_pat) < 0){
+   return -1;
+ }
+
+ return 0;
 }
 
 
@@ -313,11 +485,11 @@ int applyBlocking(pd_umem_t *umem, pd_umem_pattern **umem_pattern, int bsize, in
 
 
   if(full_mat_size%full_bsize != 0){
-    printf("Error: Matrix size does not fit an integer number of blocks\n");
+    PRINT("Error: Matrix size does not fit an integer number of blocks\n");
     return -1;
   }
   nblocks = full_mat_size / full_bsize;  
-printf("nblocks: %d\n",nblocks);
+  PRINT("nblocks: %d\n",nblocks);
   
   
   bsize_bytes = bsize*elem_size; // block size in bytes (column or row)
@@ -325,54 +497,16 @@ printf("nblocks: %d\n",nblocks);
   block_line = mat_size/bsize;	// number of blocks per line
   for(i=0;i< block_line; i++)
    for(j=0;j < block_line; j++)
-    pattern2d(umem, umem_pattern, j*bsize_bytes + i*full_bsize_bytes*block_line, bsize_bytes, mat_size*elem_size, bsize); // Repeat 2D pattern for each block within the matrix
-
+     if(pattern2d(umem, umem_pattern, j*bsize_bytes + i*full_bsize_bytes*block_line, bsize_bytes, mat_size*elem_size, bsize)<0) // Repeat 2D pattern for each block within the matrix
+	return -1;
   return 0;
 }
 
 
+/* 
 int main()
 {
- int i;
- int offset, hsize, stride, vsize, total_size;
- pd_umem_t *umem;
- pd_umem_pattern *umem_pat;
- sgentry_pattern *descriptor;
  
- // Create a umem structure with translated addresses
-  umem = (pd_umem_t*)malloc(sizeof(pd_umem_t));
-  if(umem == NULL){
-     printf("Error: Could not malloc umem structure\n");
-     return(-1);
-  }
-
-  umem->vma = umem->vma;
-  umem->size = umem->size;
-  umem->handle_id = umem->handle_id;
-  umem->nents = 2;
-  umem->pci_handle = umem->pci_handle;
-  
-  umem->sg = (pd_umem_sgentry_t*)malloc(sizeof(pd_umem_sgentry_t)*umem->nents);
-  if(umem->sg == NULL){
-     printf("Error: Could not malloc sgentry structure\n");
-     return(-1);
-  }
-  
-  (umem->sg[0]).addr = 0x80000000;
-  (umem->sg[0]).size = 0x200; // 512 B
-
-  
-  (umem->sg[1]).addr = 0x80030000;
-  (umem->sg[1]).size = 0x200; // 512 B
-  
-  offset = 4;
-  hsize = 1000;
-  stride = 500;
-  vsize = 5;
-  
-  total_size = (hsize + stride + offset)*vsize - stride;
-
-/*  
   if (total_size > (umem->sg[1]).size + (umem->sg[0]).size){
      printf("Pattern (%d) exceedes buffer capacity (%d)!\n",total_size,(umem->sg[1]).size + (umem->sg[0]).size);
      return -1;
@@ -387,7 +521,7 @@ int main()
      return -1;
   }
 */
-
+/*
   printf("Applying blocking pattern to a %d bytes block\n",15*15*4);
   
   if(applyBlocking(umem,&umem_pat, 5,15,4)<0)
@@ -412,4 +546,4 @@ int main()
   
   
   
-}
+}*/

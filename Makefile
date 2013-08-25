@@ -52,7 +52,7 @@ BINARIES =
 
 .PHONY: all dirs depend clean
 
-all: dirs depend $(BINARIES) $(BINDIR)/xiltest $(BINDIR)/dmastream $(BINDIR)/dmafft $(BINDIR)/speedtest $(BINDIR)/test_pattern
+all: dirs depend $(BINARIES) $(BINDIR)/xiltest $(BINDIR)/dmastream $(BINDIR)/dmafft $(BINDIR)/speedtest $(BINDIR)/test_pattern $(BINDIR)/test_ddr $(BINDIR)/test_dma $(BINDIR)/hotstream
 
 # Relate all exec names to it exec in the bin dir
 $(BINARIES) : % : $(BINDIR)/% ;
@@ -79,6 +79,21 @@ $(BINDIR)/test_pattern: $(OBJDIR)/test_pattern.o $(OBJDIR)/patterns.o $(OBJDIR)/
 	@echo -e "LD \t$@"
 	$(Q)$(CC) $(LDINC) $(LDFLAGS) $(CFLAGS) -o $@ $<  $(OBJDIR)/pciedma_patterns.o $(OBJDIR)/patterns.o
 
+$(BINDIR)/test_ddr: $(OBJDIR)/test_ddr.o $(OBJDIR)/patterns.o $(OBJDIR)/pciedma_patterns.o
+	@echo -e "LD \t$@"
+	$(Q)$(CC) $(LDINC) $(LDFLAGS) $(CFLAGS) -o $@ $<  $(OBJDIR)/pciedma_patterns.o $(OBJDIR)/patterns.o
+	
+$(BINDIR)/test_dma: $(OBJDIR)/test_dma.o $(OBJDIR)/patterns.o $(OBJDIR)/pciedma_patterns.o
+	@echo -e "LD \t$@"
+	$(Q)$(CC) $(LDINC) $(LDFLAGS) $(CFLAGS) -o $@ $<  $(OBJDIR)/pciedma_patterns.o $(OBJDIR)/patterns.o
+
+
+$(BINDIR)/hotstream: $(OBJDIR)/hotstream.o $(OBJDIR)/patterns.o $(OBJDIR)/pciedma_patterns.o
+	@echo -e "LD \t$@"
+	$(Q)$(CC) $(LDINC) $(LDFLAGS) $(CFLAGS) -o $@ $<  $(OBJDIR)/pciedma_patterns.o $(OBJDIR)/patterns.o
+
+
+	
 clean:
 	@echo -e "CLEAN \t$(shell pwd)"
 	-$(Q)rm -f $(addprefix $(BINDIR)/,$(BINARIES))
@@ -87,6 +102,9 @@ clean:
 	-$(Q)rm -f $(BINDIR)/dmafft
 	-$(Q)rm -f $(BINDIR)/speedtest
 	-$(Q)rm -f $(BINDIR)/test_pattern
+	-$(Q)rm -f $(BINDIR)/test_ddr
+	-$(Q)rm -f $(BINDIR)/test_dma
+	-$(Q)rm -f $(BINDIR)/hotstream
 
 	-$(Q)rm -f $(OBJ)
 	-$(Q)rm -f $(OBJDIR)/xiltest.o
@@ -96,6 +114,9 @@ clean:
 	-$(Q)rm -f $(OBJDIR)/dmafft.o
 	-$(Q)rm -f $(OBJDIR)/speedtest.o
 	-$(Q)rm -f $(OBJDIR)/test_pattern.o
+	-$(Q)rm -f $(OBJDIR)/test_ddr.o
+	-$(Q)rm -f $(OBJDIR)/test_dma.o
+	-$(Q)rm -f $(OBJDIR)/hotstream.o
 	-$(Q)rm -f $(OBJDIR)/pciedma_patterns.o
 	-$(Q)rm -f $(DEPEND)
 	

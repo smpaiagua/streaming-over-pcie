@@ -1,18 +1,19 @@
 #include "/root/Documents/spaiagua/Swinger/pcie_dev_driver/pciDriver/include/lib/pciDriver.h"
+#include <stdarg.h>
 
 #define MAX_KBUF (8*1024*1024)
 #define MAX_UBUF (64*1024*1024)
 
 /* Address ranges from system.mhs */
 
-#define PCIE_BASE 		0x0
+#define PCIE_BASE 		0x10000000 // was 0x0
 #define DMA_BASE 		0x1000
 #define BRAM_BASE 		0x2000
 #define SUMVEC_BASE0 		0x3000 	  
 #define SUMVEC_BASE1 		0x4000
 
 
-#define AXI_PCIE 		0x0
+#define AXI_PCIE 		0x10000000 // was 0x0
 #define BRAM_ABS_BASE		0x80004000
 
 
@@ -66,6 +67,7 @@
 #define NXTDESC			0x0		// Next descriptor pointer
 #define BUFFER_ADDRESS		0x8		// Buffer address
 #define MC_CTL			0x10		// Multichannel Control bits
+#define STRIDE_CTL		0x14		// 2D Stride control bits
 #define CONTROL			0x18		// Control
 #define STATUS			0x1C		// Status
 
@@ -87,8 +89,13 @@
 #define AWCACHE			0XF000000	// AWCACHE signal from RX descriptor (default - 0011)
 #define AWCACHE_DEF 		0x3		// Default value of 0011
 #define AWCACHE_SHIFT		24
-#define AWUSER_SHIFT		0xF0000000	// AWUSER signal from RX descriptor (default - 0000)
+#define AWUSER			0xF0000000	// AWUSER signal from RX descriptor (default - 0000)
 #define AWUSER_SHIFT		28
+
+#define STRIDE			0xFFFF		// Stride between the first address of successive horizontal reads
+#define VSIZE			0xFFF80000	// Number of horizontal lines for strided access
+#define VSIZE_SHIFT		19
+#define HSIZE			0xFFFF		// Number of bytes to transfer in each horizontal line (Substitutes CONTROL_BUFFLEN when using 2D Access)
 
 #define CONTROL_BUFFLEN		0x7FFFFF	// Buffer length - 23 bits
 #define CONTROL_TXEOF		0x4000000	// Transmit End Of Frame - 1 bit - MM2S ONLY
@@ -109,6 +116,19 @@
 
 #define AXI2PCIE_MASK		0xFF000000	// AXI can address 16MB (0x00FFFFFF) 
 
+/* DEBUGGING OPTIONS */
+/* ----------------- */
+
+#define DEBUG
+
+/* For Debugging */
+#ifdef DEBUG
+  #define PRINT print
+#else
+  #define PRINT(...) ((void)0)
+#endif
+
+/* ----------------- */
 
 /* Initializes the framework by mapping the BAR of the PCIE bridge and resetting the DMA engine; Should be called prior to anything else
  * Arguments: pdev - pcie device handler obtained from a successful call to open()
@@ -123,6 +143,23 @@ int initDMA(pd_device_t *pdev);
  * Returns: 0 on sucess, -1 otherwise
  */
 int setupSend(pd_device_t *pdev, void *user_buffer, unsigned int buf_size, int str_dest);
+
+
+/* Test function to obtain data from the DDR3 memory */
+int setupSendfromDDR(pd_device_t *pdev, unsigned int address, unsigned int buf_size, int str_dest);
+
+/* Test function to send data to the DDR3 memory */
+int setupRecvtoDDR(pd_device_t *pdev, unsigned int address, unsigned int buf_size);
+
+/* checkRecv with no associated user buffer */
+int checkRecvNoBuf();
+
+
+void genReset(unsigned int mask);
+
+unsigned int getInterrupt();
+
+
 
 /* Prepares a S2MM DMA transfer by mapping the user memory into device space, translating addresses and writing the SG descriptors to BRAM
  * Arguments: pdev - pcie device handler
